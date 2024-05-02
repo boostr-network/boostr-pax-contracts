@@ -8,6 +8,7 @@ import "@openzeppelin/contracts/utils/Counters.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/finance/PaymentSplitter.sol";
 import "./SmartCollectible.sol";
+import "./SmartPackVault.sol";
 
 interface ISmartPackVault {
     function getTotalStakedTime(uint256 tokenId) external view returns (uint256);
@@ -23,9 +24,9 @@ contract SmartPack is ERC721URIStorage, Ownable {
   uint public immutable AMOUNT_CLAIMABLE;
   string public BASE_URL;
   SmartCollectible public immutable smartCollectibleContract;
+  SmartPackVault public immutable smartPackVaultContract;
   address public claimer;
   uint public claimed;
-  address public smartPackVaultAddress = address(0);
 
   mapping(uint256 => uint256) public mintTimestamp;
 
@@ -67,6 +68,7 @@ contract SmartPack is ERC721URIStorage, Ownable {
     claimer = creatorAndClaimer[1];
     AMOUNT_CLAIMABLE = amountClaimable;
     smartCollectibleContract = new SmartCollectible(creatorAndClaimer[0], address(this), collectionName, tokenClasses[0], tokenClasses[1], tokenClasses[2], tokenClasses[3], tokenClasses[4], collectionBaseUri);
+    smartPackVaultContract = new SmartPackVault(address(this));
   }
 
   function claim(address to, uint256 amount) external onlyClaimer {
@@ -116,13 +118,6 @@ contract SmartPack is ERC721URIStorage, Ownable {
     return numbers;
   }
 
-  // function currentBoost(uint256 tokenId) public view returns (uint16) {
-  //   uint256 totalStakedTime = smartPackVault.totalStakedTime(tokenId) * 4;
-  //   uint16 boost = uint16((block.timestamp - mintTimestamp[tokenId]) * 100 / (365 * 2 * 86400));
-  //   if (boost > 100) boost = 100;
-  //   return boost;
-  // }
-
   function currentBoost(uint256 tokenId) public view returns (uint16) {
     require(_exists(tokenId), "Query for nonexistent token");
 
@@ -131,11 +126,8 @@ contract SmartPack is ERC721URIStorage, Ownable {
 
     uint256 effectiveTimeSinceMint = timeSinceMint;
 
-    if (smartPackVaultAddress != address(0)) {
-        ISmartPackVault vault = ISmartPackVault(smartPackVaultAddress);
-        uint256 totalStakedTime = vault.getTotalStakedTime(tokenId);
-        effectiveTimeSinceMint += totalStakedTime * 3; // Accelerate boost for staked time
-    }
+    uint256 totalStakedTime = smartPackVaultContract.getTotalStakedTime(tokenId);
+    effectiveTimeSinceMint += totalStakedTime * 3;
 
     uint16 boost = uint16((effectiveTimeSinceMint * 100) / boostDuration);
     return boost > 100 ? 100 : boost;
@@ -156,10 +148,6 @@ contract SmartPack is ERC721URIStorage, Ownable {
 
     _burn(_tokenId);
     emit SmartPackOpen(_tokenId, msg.sender, cards);
-  }
-
-  function setSmartPackVaultAddress(address _vaultAddress) external onlyOwner {
-    smartPackVaultAddress = _vaultAddress;
   }
 }
 

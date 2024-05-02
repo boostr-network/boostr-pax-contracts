@@ -132,6 +132,11 @@ const main = async () => {
 
   let totalSmartPacks = await smartPackContract.totalSupply();
   console.log("Total Smart Packs:", totalSmartPacks.toString());
+
+  let smartPackContractOwner = await smartPackContract.owner();
+  console.log("Smart Pack contract owner:", smartPackContractOwner.toString());
+  let smartCollectibleContractOwner = await smartCollectibleContract.owner();
+  console.log("Smart Collectible contract owner:", smartCollectibleContractOwner.toString());
 };
 
 const runMain = async () => {

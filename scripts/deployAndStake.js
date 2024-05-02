@@ -32,16 +32,10 @@ const main = async () => {
   const smartCollectibleContractAddress = await smartPackContract.smartCollectibleContract();
   console.log("SmartCollectible contract deployed to:", smartCollectibleContractAddress);
 
+  const smartPackVaultContractAddress = await smartPackContract.smartPackVaultContract();
   const smartPackVaultContractFactory = await ethers.getContractFactory('SmartPackVault');
-  const smartPackVaultContract = await smartPackVaultContractFactory.deploy(smartPackContract.address);
-  await smartPackVaultContract.deployed();
-  console.log("SmartPackVault contract deployed to:", smartPackVaultContract.address);
-
-  console.log("")
-  console.log("Setting Smart Pack Vault...")
-  let txn = await smartPackContract.setSmartPackVaultAddress(smartPackVaultContract.address);
-  await txn.wait();
-  console.log("Smart Pack Vault set!")
+  const smartPackVaultContract = await smartPackVaultContractFactory.attach(smartPackVaultContractAddress);
+  console.log("SmartPackVault contract deployed to:", smartPackVaultContractAddress);
 
   console.log("")
   console.log("Claiming Smart Pack...")

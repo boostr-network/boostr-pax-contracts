@@ -5,16 +5,21 @@ pragma solidity 0.8.24;
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/Strings.sol";
 import "@openzeppelin/contracts/token/ERC1155/ERC1155.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "hardhat/console.sol";
 
 contract SmartCollectible is ERC1155, Ownable {
   string public name;
   string public constant symbol = "SMARTCOLLECTIBLE";
+  address public constant BURN_ADDRESS = 0x000000000000000000000000000000000000dEaD;
   uint256 public totalSmartCollectibles;
   address public immutable smartPack;
   mapping(Rarity => uint16) public probabilityForRarity;
   mapping(Rarity => int16) public boostForRarity;
   mapping(Rarity => uint256[]) public tokenIdsForRarity;
+  mapping(address => bool) public collectionCompleted;
+  IERC20 public prizeToken;
+  uint256 public prizeAmount;
 
   enum Rarity {
     Common,
@@ -27,6 +32,7 @@ contract SmartCollectible is ERC1155, Ownable {
   uint16 constant MAX_PROBABILITY = 100;
 
   event MintSmartCollectible(address sender, uint256 tokenId);
+  event CollectionCompleted(address indexed user);
 
   modifier onlySmartPack {
     require(msg.sender == smartPack, "Only the collection Smart Pack can execute this function.");
@@ -81,26 +87,28 @@ contract SmartCollectible is ERC1155, Ownable {
     tokenIdsForRarity[Rarity.Epic] = epic;
     tokenIdsForRarity[Rarity.Legendary] = legendary;
 
-    // Minting one of each to the creator address so the tokens actually exist
+    // Minting one of each to the zero address so the tokens actually exist
     for (uint256 i = 0; i < common.length; i++) {
-      _mint(creator, common[i], 1, "");
+      _mint(BURN_ADDRESS, common[i], 1, "");
     }
     for (uint256 i = 0; i < uncommon.length; i++) {
-      _mint(creator, uncommon[i], 1, "");
+      _mint(BURN_ADDRESS, uncommon[i], 1, "");
     }
     for (uint256 i = 0; i < rare.length; i++) {
-      _mint(creator, rare[i], 1, "");
+      _mint(BURN_ADDRESS, rare[i], 1, "");
     }
     for (uint256 i = 0; i < epic.length; i++) {
-      _mint(creator, epic[i], 1, "");
+      _mint(BURN_ADDRESS, epic[i], 1, "");
     }
     for (uint256 i = 0; i < legendary.length; i++) {
-      _mint(creator, legendary[i], 1, "");
+      _mint(BURN_ADDRESS, legendary[i], 1, "");
     }
 
     totalSmartCollectibles = common.length + uncommon.length + rare.length + epic.length + legendary.length;
     smartPack = smartPackAddress;
     name = collectionName;
+
+    transferOwnership(creator);
   }
 
   function _rarityToString(Rarity rarity) internal pure returns (string memory) {
@@ -179,6 +187,69 @@ contract SmartCollectible is ERC1155, Ownable {
     emit MintSmartCollectible(_toAddress, randomTokenId);
 
     return randomTokenId;
+  }
+
+  /**
+  * @dev Complete the collection for the caller if they own at least one of each token.
+  * Assumes token IDs are sequential and cover the entire range of tokens required for completion.
+  * @notice Callers must own at least one of each token in the sequential range to complete their collection.
+  */
+  function completeCollection() external {
+    //require(msg.sender != owner(), "Owner cannot complete the collection");
+    require(!collectionCompleted[msg.sender], "Collection already completed for this address");
+
+    uint256 startId = 0;
+    uint256 endId = totalSmartCollectibles; // End ID, based on your total number of collectibles
+
+    // Iterate over the range of token IDs required for a complete collection.
+    // This loop assumes that token IDs are sequential.
+    for (uint256 tokenId = startId; tokenId < endId; tokenId++) {
+      require(balanceOf(msg.sender, tokenId) > 0, "Incomplete collection: missing at least one token.");
+    }
+
+    // Mark the collection as completed for the sender and grant the prize.
+    collectionCompleted[msg.sender] = true;
+    _grantPrize(msg.sender);
+
+    // Emit an event to signal the completion.
+    emit CollectionCompleted(msg.sender);
+  }
+
+  /**
+  * @dev Grants a prize to the specified address.
+  * Ensure prize token and amount are set and contract has enough tokens.
+  * @param to The recipient of the prize.
+  */
+  function _grantPrize(address to) private {
+    require(address(prizeToken) != address(0), "Prize token has not been set");
+    require(prizeAmount > 0, "Prize amount has not been set");
+    require(prizeToken.balanceOf(address(this)) >= prizeAmount, "Insufficient prize tokens in the contract");
+    bool sent = prizeToken.transfer(to, prizeAmount);
+    require(sent, "Failed to send prize");
+  }
+
+  function _beforeTokenTransfer(address operator, address from, address to, uint256[] memory ids, uint256[] memory amounts, bytes memory data) 
+    internal 
+    override(ERC1155) {
+    super._beforeTokenTransfer(operator, from, to, ids, amounts, data);
+
+    if (from != address(0)) { // Ignore minting case
+        for (uint256 i = 0; i < ids.length; i++) {
+            if (collectionCompleted[from]) {
+                require(balanceOf(from, ids[i]) > amounts[i], "Cannot transfer the last token of a completed collection");
+            }
+        }
+    }
+  }
+
+  function getPrize() public view returns (address, uint256) {
+    return (address(prizeToken), prizeAmount);
+  }
+
+  function setPrize(address _prizeToken, uint256 _prizeAmount) public onlyOwner {
+    require(_prizeToken != address(0), "Prize token address cannot be the zero address");
+    prizeToken = IERC20(_prizeToken);
+    prizeAmount = _prizeAmount;
   }
 
   function totalSupply() external view returns (uint) {
